@@ -37,10 +37,10 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Sync Capacitor Android
+      - name: Sync Android
         run: npx cap sync android
 
-      - name: Build Debug APK
+      - name: Build APK
         run: |
           cd android
           chmod +x gradlew
