@@ -1,20 +1,53 @@
-- uses: actions/checkout@v5
+name: Android Build
 
-- uses: actions/setup-node@v5
-  with:
-    node-version: 22
-    cache: npm
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-- name: Install dependencies
-  run: npm ci
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-- name: Check Capacitor
-  run: |
-    ls node_modules/.bin
-    npx cap --version
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-- name: Build web
-  run: npm run build
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
 
-- name: Sync Android
-  run: npx cap sync android
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Capacitor
+        run: |
+          npx cap --version
+          npm list @capacitor/cli
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
