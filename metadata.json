@@ -1,0 +1,6 @@
+{
+  "name": "ATHENA Core Foundation Studio",
+  "description": "Interactive architecture workspace, 10-module foundation simulator, Kotlin Multiplatform clean architecture code browser, and test runner for ATHENA language learning platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
