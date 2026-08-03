@@ -18,13 +18,19 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
 
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
+
+      - name: Verify package files
+        run: |
+          node -v
+          npm -v
+          ls -la
+          grep jszip package-lock.json
 
       - name: Install dependencies
         run: npm ci
