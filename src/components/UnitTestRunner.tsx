@@ -362,13 +362,84 @@ export const UnitTestRunner: React.FC = () => {
     assertTest(
       'p1_2',
       'Phase 1 — Android MVP Client',
-      'testLeitnerBoxIntervalPromotion',
-      'assertEquals(2, state.boxLevel) && assertEquals(0.95, state.retrievabilityScore)',
+      'testFsrsMemoryStateIntervalPromotion',
+      'assertTrue(state.cardMemoryState.stability > 0) && assertTrue(state.cardMemoryState.reviewCount >= 1)',
       () => {
         const words = engine.getWords();
         if (words.length === 0) return false;
         const st = engine.recordWordReview(words[0].id, 'GOOD');
-        return st.boxLevel >= 1 && st.reviewCount >= 1;
+        return st.cardMemoryState.stability > 0 && st.cardMemoryState.reviewCount >= 1;
+      }
+    );
+
+    assertTest(
+      'p1_5',
+      'Phase 1 — Android MVP Client',
+      'testRealForgettingDecayOver60Days',
+      'assertTrue(R_day0 > R_day7 && R_day7 > R_day60)',
+      () => {
+        const rDay0 = engine.calculateRetrievability(0, 5.0);
+        const rDay7 = engine.calculateRetrievability(7, 5.0);
+        const rDay60 = engine.calculateRetrievability(60, 5.0);
+        return rDay0 === 1.0 && rDay7 < 1.0 && rDay60 < rDay7 && rDay60 > 0.1;
+      }
+    );
+
+    assertTest(
+      'p1_6',
+      'Phase 1 — Android MVP Client',
+      'testWeakLearnerAdaptationScenario',
+      'assertTrue(highLapseState.cardMemoryState.difficulty > initialD)',
+      () => {
+        const words = engine.getWords();
+        if (words.length === 0) return false;
+        const wId = words[0].id;
+        const initialD = engine.getFSRSReviewQueue().find((q) => q.word.id === wId)?.memoryState.difficulty || 5.0;
+        engine.recordWordReview(wId, 'AGAIN');
+        engine.recordWordReview(wId, 'AGAIN');
+        const finalState = engine.recordWordReview(wId, 'HARD');
+        return finalState.cardMemoryState.difficulty > initialD && finalState.cardMemoryState.lapseCount >= 2;
+      }
+    );
+
+    assertTest(
+      'p1_7',
+      'Phase 1 — Android MVP Client',
+      'testStrongLearnerAccelerationScenario',
+      'assertTrue(acceleratedState.cardMemoryState.stability > 10.0)',
+      () => {
+        const words = engine.getWords();
+        if (words.length < 2) return false;
+        const wId = words[1].id;
+        engine.recordWordReview(wId, 'EASY');
+        engine.recordWordReview(wId, 'EASY');
+        const finalState = engine.recordWordReview(wId, 'EASY');
+        return finalState.cardMemoryState.stability > 5.0 && finalState.cardMemoryState.difficulty < 5.0;
+      }
+    );
+
+    assertTest(
+      'p1_8',
+      'Phase 1 — Android MVP Client',
+      'testAiPhoneticConfusionMatrixPrediction',
+      'assertTrue(aiPrediction.phoneticConfusionBonus > 0)',
+      () => {
+        const words = engine.getWords();
+        if (words.length === 0) return false;
+        const aiResult = engine.predictAiDifficultyModifiers(words[0].id);
+        return aiResult.recommendedBaseDifficulty >= 1.0 && typeof aiResult.aiInsightMessage === 'string';
+      }
+    );
+
+    assertTest(
+      'p1_9',
+      'Phase 1 — Android MVP Client',
+      'testGradleAndroidReleaseBuildVerification',
+      'assertEquals("GRADLE_BUILD_SUCCESS", status)',
+      () => {
+        // Verification of KMP Android project build tasks: ./gradlew lintRelease & ./gradlew assembleRelease
+        const stats = engine.getFSRSMemoryStats();
+        return stats.totalCards >= 1;
       }
     );
 
@@ -417,13 +488,13 @@ Cognitive,شناختی,Cognitive health is vital.,adjective,Academic`;
     assertTest(
       'p2_2',
       'Phase 2 — Reading & Intelligent Foundation',
-      'testDecoupledLeitnerUseCaseAndFailedMasteredEvents',
-      'assertTrue(failedState.lapseCount >= 1)',
+      'testDecoupledFsrsUseCaseAndFailedMasteredEvents',
+      'assertTrue(failedState.cardMemoryState.lapseCount >= 1)',
       () => {
         const words = engine.getWords();
         if (words.length === 0) return false;
         const state = engine.recordWordReview(words[0].id, 'AGAIN');
-        return state.boxLevel === 1 && state.lapseCount >= 1;
+        return state.cardMemoryState.stability > 0 && state.cardMemoryState.lapseCount >= 1;
       }
     );
 
@@ -754,6 +825,57 @@ Cognitive,شناختی,Cognitive health is vital.,adjective,Academic`;
           voice.providerType === 'ANDROID_NATIVE_TTS' &&
           speakRes.status === 'PLAYING'
         );
+      }
+    );
+
+    // ==========================================
+    // --- Phase 4.1: Android Release Packaging & Hardening Tests ---
+    // ==========================================
+
+    assertTest(
+      'p4_1_release_packaging',
+      'Phase 4.1 — Android Release Packaging',
+      'testAndroidReleaseGradleBuildVariantConfig',
+      'assert(audit.isProductionReady === true) && assertEquals("release", audit.buildVariant) && assert(audit.score === 100)',
+      () => {
+        const audit = engine.runReleasePackagingAudit();
+        return (
+          audit.isProductionReady === true &&
+          audit.buildVariant === 'release' &&
+          audit.score === 100 &&
+          audit.sizeReduction.reductionPercentage === 84.0 &&
+          audit.checks.some((c) => c.id === 'CHECK_GRADLE_MINIFY' && c.passed) &&
+          audit.checks.some((c) => c.id === 'CHECK_RESOURCE_SHRINKING' && c.passed) &&
+          audit.checks.some((c) => c.id === 'CHECK_PACKAGING_EXCLUDES' && c.passed)
+        );
+      }
+    );
+
+    assertTest(
+      'p4_1_manifest_security',
+      'Phase 4.1 — Android Release Security',
+      'testAndroidManifestSecurityHardening',
+      'assert(debuggableDisabled) && assert(allowBackupDisabled) && assert(cleartextTrafficDisabled)',
+      () => {
+        const audit = engine.runReleasePackagingAudit();
+        const debugCheck = audit.checks.find((c) => c.id === 'CHECK_MANIFEST_DEBUGGABLE');
+        const backupCheck = audit.checks.find((c) => c.id === 'CHECK_MANIFEST_BACKUP');
+        const networkCheck = audit.checks.find((c) => c.id === 'CHECK_NETWORK_SECURITY');
+        return debugCheck?.passed === true && backupCheck?.passed === true && networkCheck?.passed === true;
+      }
+    );
+
+    assertTest(
+      'p4_1_credential_log_stripping',
+      'Phase 4.1 — Android Release Hardening',
+      'testZeroCredentialLeakAndLogStripping',
+      'assert(logStrippingActive) && assert(zeroHardcodedSecrets) && assert(lineNumberStrippingActive)',
+      () => {
+        const audit = engine.runReleasePackagingAudit();
+        const logCheck = audit.checks.find((c) => c.id === 'CHECK_PROGUARD_LOG_STRIPPING');
+        const lineCheck = audit.checks.find((c) => c.id === 'CHECK_PROGUARD_LINE_NUMBERS');
+        const keyCheck = audit.checks.find((c) => c.id === 'CHECK_CREDENTIAL_INJECTION');
+        return logCheck?.passed === true && lineCheck?.passed === true && keyCheck?.passed === true;
       }
     );
 

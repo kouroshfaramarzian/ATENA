@@ -54,7 +54,15 @@ Phase 1 Android Application MVP Requirements:
 4. Language Support (Native: Persian, Target: English, Language Pack Extensible)
 5. CSV Importer (Batch load with fields: word, meaning, example, part_of_speech, domain)
 6. Dashboard (Total vocabulary, words learned today, due count, Leitner box progress)
-7. Settings (Native/Target languages, voice TTS speed, daily learning goal)`;
+7. Settings (Native/Target languages, voice TTS speed, daily learning goal)
+
+Phase 4.1 Android Release Packaging & Hardening Requirements:
+1. Gradle Release Build Configuration (isMinifyEnabled = true, isShrinkResources = true, R8 obfuscation)
+2. PackagingOptions Excludes (Exclude META-INF/*.version, META-INF/*.kotlin_module, **/*.sq, **/*.sqm, **/debug/**, **/test/**)
+3. Hardened AndroidManifest (android:debuggable="false", android:allowBackup="false", android:usesCleartextTraffic="false")
+4. Network Security Config (Strict HTTPS pinning, block user installed CA certificates)
+5. ProGuard Log & Line Number Stripping (-assumenosideeffects for Log.d/v/i/w, -renamesourcefileattribute "")
+6. Zero Credential Leaks (Inject keys via encrypted BuildConfig at build time, never in code or manifest)`;
 
   const handleCopyText = (text: string, type: 'fa' | 'en' | 'standards') => {
     navigator.clipboard.writeText(text);

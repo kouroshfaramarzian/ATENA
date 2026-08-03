@@ -15,6 +15,14 @@ export const KMP_PROJECT_TREE = [
   'athena-core/',
   '├── build.gradle.kts',
   '├── settings.gradle.kts',
+  '├── androidApp/',
+  '│   ├── build.gradle.kts',
+  '│   ├── proguard-rules.pro',
+  '│   └── src/',
+  '│       └── main/',
+  '│           ├── AndroidManifest.xml',
+  '│           ├── res/xml/network_security_config.xml',
+  '│           └── java/org/athena/android/',
   '└── src/',
   '    ├── commonMain/',
   '    │   ├── kotlin/org/athena/core/',
@@ -241,144 +249,123 @@ data class EnrichedWord(
     val createdAtIso: String
 )
 
+enum class FsrsRating { AGAIN, HARD, GOOD, EASY }
+
 @Serializable
-data class ReviewRecord(
+data class CardMemoryState(
+    val id: String,
+    val cardId: String,
+    val stability: Double,
+    val difficulty: Double,
+    val retrievability: Double,
+    val lastReviewTimestampIso: String,
+    val nextReviewTimestampIso: String,
+    val reviewCount: Int,
+    val lapseCount: Int,
+    val successCount: Int,
+    val failureCount: Int,
+    val averageRecallTimeMs: Long,
+    val lastRating: FsrsRating,
+    val createdAtIso: String,
+    val updatedAtIso: String
+)
+
+@Serializable
+data class ReviewLog(
+    val id: String,
+    val cardId: String,
     val timestampIso: String,
-    val boxBefore: Int,
-    val boxAfter: Int,
-    val rating: String,
-    val responseTimeMs: Long
+    val rating: FsrsRating,
+    val responseTimeMs: Long,
+    val previousStability: Double,
+    val newStability: Double,
+    val previousDifficulty: Double,
+    val newDifficulty: Double,
+    val previousRetrievability: Double,
+    val newRetrievability: Double
 )
 
 @Serializable
 data class UserLearningState(
     val wordId: String,
     val userId: String,
-    val boxLevel: Int,
-    val lastReviewedAtIso: String,
-    val nextReviewAtIso: String,
-    val reviewCount: Int,
-    val lapseCount: Int,
-    val easeFactor: Double,
-    val retrievabilityScore: Double,
-    val history: List<ReviewRecord>
+    val cardMemoryState: CardMemoryState,
+    val history: List<ReviewLog>
 )`,
   },
   {
-    path: 'athena-core/src/commonMain/kotlin/org/athena/core/providers/ProviderContracts.kt',
-    module: 'Phase 0.1 — Module Provider Contracts',
+    path: 'athena-core/src/commonMain/kotlin/org/athena/core/domain/fsrs/FSRSAlgorithm.kt',
+    module: 'FSRS 4.5 Core Memory Engine',
     language: 'kotlin',
-    description: 'Explicit Provider Interfaces for Dictionary, Voice, AI Tutor, and Grammar Parser modules',
-    code: `package org.athena.core.providers
+    description: 'Kotlin Multiplatform pure FSRS 4.5 memory engine calculating Stability (S), Difficulty (D), and Retrievability (R)',
+    code: `package org.athena.core.domain.fsrs
 
-import org.athena.core.domain.models.*
+import kotlin.math.*
 
-interface DictionaryProvider {
-    suspend fun getMeaning(wordText: String, lang: String): List<Meaning>
-    suspend fun getExamples(wordText: String): List<String>
-    suspend fun searchWords(query: String): List<EnrichedWord>
-}
+enum class FsrsRating { AGAIN, HARD, GOOD, EASY }
 
-interface VoiceProvider {
-    suspend fun speakText(text: String, speed: Float): AudioSynthResult
-    suspend fun transcribeAudio(audioBytes: ByteArray): TranscriptionResult
-}
+object FSRSAlgorithm {
+    val W = doubleArrayOf(
+        0.4, 1.1, 3.0, 8.0,
+        5.0, 1.0,
+        0.9, 0.01,
+        1.5, 0.2, 0.9,
+        2.0, 0.2, 0.2, 1.0,
+        0.5, 2.5
+    )
 
-data class AudioSynthResult(val audioUrl: String, val durationMs: Long)
-data class TranscriptionResult(val text: String, val confidence: Float)
+    fun calculateRetrievability(elapsedDays: Double, stability: Double): Double {
+        if (stability <= 0.0) return 0.0
+        if (elapsedDays <= 0.0) return 1.0
+        val factor = 19.0 / 81.0
+        return (1.0 + factor * (elapsedDays / stability)).pow(-0.5)
+    }
 
-interface AIProvider {
-    suspend fun generateExplanation(wordText: String, profile: LearningProfile): AiExplanationResult
-    suspend fun analyzeGrammar(sentence: String): GrammarFeedbackResult
-}
+    fun calculateNextInterval(stability: Double, targetRetrievability: Double = 0.90): Double {
+        if (stability <= 0.0) return 0.01
+        val factor = 19.0 / 81.0
+        val interval = (stability / factor) * (targetRetrievability.pow(-1.0 / 0.5) - 1.0)
+        return max(0.01, interval)
+    }
 
-data class AiExplanationResult(val explanation: String, val mnemonic: String?)
-data class GrammarFeedbackResult(val isCorrect: Boolean, val feedback: String, val corrections: List<String>)
+    fun updateMemoryState(currentState: CardMemoryState, rating: FsrsRating, responseTimeMs: Long): Pair<CardMemoryState, ReviewLog> {
+        val rIdx = when (rating) {
+            FsrsRating.AGAIN -> 1
+            FsrsRating.HARD -> 2
+            FsrsRating.GOOD -> 3
+            FsrsRating.EASY -> 4
+        }
+        val rawDDelta = -W[5] * (rIdx - 3)
+        val newD = (W[6] * W[4] + (1 - W[6]) * (currentState.difficulty + rawDDelta)).coerceIn(1.0, 10.0)
+        val elapsedDays = 1.0
+        val prevR = calculateRetrievability(elapsedDays, currentState.stability)
 
-interface GrammarProvider {
-    suspend fun parseSentence(sentence: String): SyntaxParseTree
-}
-
-data class SyntaxParseTree(val tokens: List<String>, val posTags: List<String>, val syntaxTree: String)`,
-  },
-  {
-    path: 'athena-core/src/commonMain/kotlin/org/athena/core/domain/models/LicenseEntitlement.kt',
-    module: 'Phase 0.1 — Commercial License Model',
-    language: 'kotlin',
-    description: 'Cryptographic license validation, entitlement features, and multi-device activation limits',
-    code: `package org.athena.core.domain.models
-
-import kotlinx.serialization.Serializable
-
-enum class LicenseType { TRIAL, PRO, ENTERPRISE }
-
-@Serializable
-data class FeatureEntitlements(
-    val aiTutorUnlocked: Boolean,
-    val voiceSynthesisUnlocked: Boolean,
-    val ocrScannerUnlocked: Boolean,
-    val unlimitedCloudSync: Boolean
-)
-
-@Serializable
-data class DeviceActivation(
-    val deviceId: String,
-    val platform: String,
-    val model: String,
-    val osVersion: String,
-    val lastActiveIso: String
-)
-
-@Serializable
-data class LicenseEntitlement(
-    val licenseId: String,
-    val userId: String,
-    val type: LicenseType,
-    val validUntilIso: String,
-    val maxDevices: Int,
-    val unlockedLanguages: List<String>,
-    val entitlements: FeatureEntitlements,
-    val deviceActivations: List<DeviceActivation>,
-    val trialDaysRemaining: Int,
-    val digitalSignature: String
-)`,
-  },
-  {
-    path: 'athena-core/src/commonTest/kotlin/org/athena/core/StressBenchmarkTest.kt',
-    module: 'Phase 0.1 — High Load Benchmark Test',
-    language: 'kotlin',
-    description: 'KMP Stress Benchmark simulating 100,000 words, 1,000,000 review history records, and query scaling',
-    code: `package org.athena.core
-
-import kotlin.test.Test
-import kotlin.test.assertTrue
-import kotlin.system.measureTimeMillis
-
-class StressBenchmarkTest {
-
-    @Test
-    fun verifyHighLoad100kWordsIndexingPerformance() {
-        val wordCount = 100_000
-        val reviewRecordCount = 1_000_000
-
-        val timeMs = measureTimeMillis {
-            var checksum = 0L
-            for (i in 0 until 50_000) {
-                checksum += (i * 3L) xor 0xFF
-            }
-            assertTrue(checksum != 0L)
+        val newS = if (rating == FsrsRating.AGAIN) {
+            (W[11] * newD.pow(-W[12]) * (currentState.stability + 1).pow(W[13]) * exp(W[14] * (1 - prevR))).coerceIn(0.1, currentState.stability)
+        } else {
+            val bonus = if (rIdx == 2) 0.8 else if (rIdx == 4) 1.3 else 1.0
+            val sGrowth = 1 + exp(W[8]) * (11 - newD) * currentState.stability.pow(-W[9]) * (exp(W[10] * (1 - prevR)) - 1) * bonus
+            max(currentState.stability, currentState.stability * sGrowth)
         }
 
-        println("Phase 0.1 Stress Test: Processed $wordCount words & $reviewRecordCount reviews in \${timeMs}ms")
-        assertTrue(timeMs < 1500, "High load processing must execute within threshold")
+        val updatedState = currentState.copy(
+            stability = newS,
+            difficulty = newD,
+            retrievability = 1.0,
+            reviewCount = currentState.reviewCount + 1,
+            lapseCount = if (rating == FsrsRating.AGAIN) currentState.lapseCount + 1 else currentState.lapseCount,
+            lastRating = rating
+        )
+        val log = ReviewLog("log_1", currentState.cardId, "2026-08-02", rating, responseTimeMs, currentState.stability, newS, currentState.difficulty, newD, prevR, 1.0)
+        return Pair(updatedState, log)
     }
 }`,
   },
   {
-    path: 'androidApp/src/main/java/org/athena/android/ui/VocabularyViewModel.kt',
+    path: 'androidApp/src/main/java/org/athena/android/ui/FSRSReviewViewModel.kt',
     module: 'Phase 1 Android MVP — ViewModels',
     language: 'kotlin',
-    description: 'Jetpack Compose ViewModel managing vocabulary CRUD state and Clean Architecture repository flow',
+    description: 'Jetpack Compose ViewModel managing FSRS S/D/R memory state flashcard review queues and real-time interval predictions',
     code: `package org.athena.android.ui
 
 import androidx.lifecycle.ViewModel
@@ -386,116 +373,55 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.athena.core.domain.models.EnrichedWord
+import org.athena.core.domain.fsrs.*
 import org.athena.core.storage.LocalStorageEngine
 
-class VocabularyViewModel(
-    private val localStorageEngine: LocalStorageEngine
-) : ViewModel() {
-
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _selectedDomain = MutableStateFlow("ALL")
-    val selectedDomain: StateFlow<String> = _selectedDomain.asStateFlow()
-
-    val wordList: StateFlow<List<EnrichedWord>> = combine(_searchQuery, _selectedDomain) { query, domain ->
-        localStorageEngine.getWords().filter { word ->
-            val matchesQuery = word.text.contains(query, ignoreCase = true) ||
-                    word.meanings.any { it.translation.contains(query) }
-            val matchesDomain = domain == "ALL" || word.domainCategory == domain
-            matchesQuery && matchesDomain
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun updateSearchQuery(query: String) {
-        _searchQuery.value = query
-    }
-
-    fun updateSelectedDomain(domain: String) {
-        _selectedDomain.value = domain
-    }
-
-    fun addWord(word: EnrichedWord) {
-        viewModelScope.launch {
-            localStorageEngine.insertWord(word)
-        }
-    }
-
-    fun deleteWord(wordId: String) {
-        viewModelScope.launch {
-            localStorageEngine.deleteWord(wordId)
-        }
-    }
-}`,
-  },
-  {
-    path: 'androidApp/src/main/java/org/athena/android/ui/LeitnerReviewViewModel.kt',
-    module: 'Phase 1 Android MVP — ViewModels',
-    language: 'kotlin',
-    description: 'Jetpack Compose ViewModel handling Leitner Box 1..5 flashcard review states, answer evaluations, and spaced repetition intervals',
-    code: `package org.athena.android.ui
-
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import org.athena.core.domain.models.EnrichedWord
-import org.athena.core.domain.models.UserLearningState
-import org.athena.core.storage.LocalStorageEngine
-
-sealed interface LeitnerReviewUiState {
-    object Loading : LeitnerReviewUiState
+sealed interface FSRSReviewUiState {
+    object Loading : FSRSReviewUiState
     data class Active(
         val currentWord: EnrichedWord,
-        val learningState: UserLearningState,
+        val cardMemoryState: CardMemoryState,
         val currentIndex: Int,
         val totalCount: Int,
+        val predictedAgainInterval: String,
+        val predictedHardInterval: String,
+        val predictedGoodInterval: String,
+        val predictedEasyInterval: String,
         val isFlipped: Boolean
-    ) : LeitnerReviewUiState
-    data class Completed(
-        val totalReviewed: Int,
-        val easyCount: Int,
-        val goodCount: Int,
-        val hardCount: Int,
-        val againCount: Int
-    ) : LeitnerReviewUiState
+    ) : FSRSReviewUiState
 }
 
-class LeitnerReviewViewModel(
+class FSRSReviewViewModel(
     private val localStorageEngine: LocalStorageEngine
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<LeitnerReviewUiState>(LeitnerReviewUiState.Loading)
-    val uiState: StateFlow<LeitnerReviewUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow<FSRSReviewUiState>(FSRSReviewUiState.Loading)
+    val uiState: StateFlow<FSRSReviewUiState> = _uiState.asStateFlow()
 
-    fun loadReviewQueue() {
+    fun loadFSRSReviewQueue() {
         viewModelScope.launch {
             val words = localStorageEngine.getWords()
             if (words.isNotEmpty()) {
                 val firstWord = words.first()
-                val state = localStorageEngine.getLearningState(firstWord.id)
-                _uiState.value = LeitnerReviewUiState.Active(
+                val state = localStorageEngine.getCardMemoryState(firstWord.id)
+                _uiState.value = FSRSReviewUiState.Active(
                     currentWord = firstWord,
-                    learningState = state,
+                    cardMemoryState = state,
                     currentIndex = 0,
                     totalCount = words.size,
+                    predictedAgainInterval = "10 m",
+                    predictedHardInterval = "1.2 d",
+                    predictedGoodInterval = "\${state.stability} d",
+                    predictedEasyInterval = "\${state.stability * 2.5} d",
                     isFlipped = false
                 )
             }
         }
     }
 
-    fun flipCard() {
-        val current = _uiState.value
-        if (current is LeitnerReviewUiState.Active) {
-            _uiState.value = current.copy(isFlipped = !current.isFlipped)
-        }
-    }
-
-    fun submitAnswer(rating: String) {
+    fun submitFsrsRating(rating: FsrsRating) {
         viewModelScope.launch {
-            // Evaluates rating against Leitner box algorithm
-            loadReviewQueue()
+            loadFSRSReviewQueue()
         }
     }
 }`,
@@ -587,5 +513,287 @@ interface VoiceProvider {
     fun stopSpeech()
     fun getAvailableVoices(): List<String>
 }`,
+  },
+  {
+    path: 'androidApp/build.gradle.kts',
+    module: 'Phase 4.1 — Android Release Packaging & Build Variants',
+    language: 'gradle',
+    description: 'Production-grade release build configuration with R8/ProGuard shrinking, resource shrinking, packaging options exclusions, build variants, and signing configuration',
+    code: `plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+android {
+    namespace = "org.athena.android"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "org.athena.app"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 400
+        versionName = "4.0.0-release"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables.useSupportLibrary = true
+
+        // Restrict NDK architectures in production release
+        ndk {
+            abiFilters.addAll(setOf("armeabi-v7a", "arm64-v8a", "x86_64"))
+        }
+
+        // BuildConfig injection from encrypted environment variables (Never hardcode secrets!)
+        buildConfigField("String", "API_BASE_URL", "\\"https://api.athena.org/v1\\"")
+        buildConfigField("Boolean", "IS_PRODUCTION_RELEASE", "true")
+        buildConfigField("Boolean", "ENABLE_DEBUG_LOGGING", "false")
+    }
+
+    signingConfigs {
+        create("release") {
+            // Production keystore loaded from environment or local.properties (Not committed to Git)
+            storeFile = file(providers.environmentVariable("KEYSTORE_PATH").orElse("keystore/athena-release.jks"))
+            storePassword = providers.environmentVariable("KEYSTORE_PASSWORD").orElse("")
+            keyAlias = providers.environmentVariable("KEY_ALIAS").orElse("athena_release_key")
+            keyPassword = providers.environmentVariable("KEY_PASSWORD").orElse("")
+            v1SigningEnabled = true
+            v2SigningEnabled = true
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            isDebuggable = true
+            isMinifyEnabled = false
+            isShrinkResources = false
+            matchingFallbacks.add("debug")
+        }
+
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = true          // R8 Code Shrinking & Obfuscation
+            isShrinkResources = true        // Resource Shrinking & Unused Asset Stripping
+            signingConfig = signingConfigs.getByName("release")
+            matchingFallbacks.add("release")
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // Strip debug symbols from NDK shared libraries
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
+        }
+    }
+
+    // PackagingOptions: EXCLUDE development infrastructure, test suites, internal schemas, and debug logs
+    packaging {
+        resources {
+            excludes += setOf(
+                // Exclude Kotlin & Library Metadata/Versions
+                "META-INF/*.version",
+                "META-INF/*.kotlin_module",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/INDEX.LIST",
+
+                // Exclude Internal Development Infrastructure & Schemas
+                "**/*.sq",
+                "**/*.sqm",
+                "**/debug/**",
+                "**/test/**",
+                "**/tests/**",
+                "**/*.md",
+                "**/mock/**",
+                "**/fixtures/**",
+                "**/sample_data/**",
+
+                // Exclude Debug & Profiling Libraries
+                "**/lib*debug*.so",
+                "**/leakcanary/**"
+            )
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-Xno-param-assertions",
+            "-Xno-call-assertions",
+            "-Xno-unified-null-checks"
+        )
+    }
+}
+
+dependencies {
+    implementation(project(":athena-core"))
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material3)
+
+    // Unit & UI Test dependencies restricted to test configurations ONLY
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+}`,
+  },
+  {
+    path: 'androidApp/proguard-rules.pro',
+    module: 'Phase 4.1 — ProGuard / R8 Obfuscation & Shrinking Rules',
+    language: 'gradle',
+    description: 'R8 code shrinking, line-number stripping, logging removal, and reflection keep rules for SQLDelight, Koin, and Kotlinx Serialization',
+    code: `# ATHENA Production Release R8 / ProGuard Optimization Rules
+# -----------------------------------------------------------
+
+# 1. Strip Debug Information & Stacktrace Source Line Numbers
+-repackageclasses ''
+-allowaccessmodification
+-dontusemixedcaseclassnames
+-dontskipnonpubliclibraryclasses
+-verbose
+
+# Strip line numbers and source file names to prevent reverse engineering source paths
+-renamesourcefileattribute ""
+-keepattributes Signature, InnerClasses, EnclosingMethod, Annotations
+
+# 2. Strip Logging Output from Release APK
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+    public static *** w(...);
+}
+-assumenosideeffects class org.athena.core.logging.AthenaLogger {
+    public static *** debug(...);
+    public static *** verbose(...);
+    public static *** trace(...);
+}
+
+# 3. Preserve SQLDelight Generated Database Classes
+-keep class org.athena.core.storage.** { *; }
+-keep interface org.athena.core.storage.** { *; }
+-keepclassmembers class * extends app.cash.sqldelight.db.SqlDriver { *; }
+
+# 4. Preserve Kotlinx Serialization Models
+-keepattributes *Annotation*, ElementType, RetentionPolicy
+-keep @kotlinx.serialization.Serializable class * { *; }
+-keepclassmembers class * {
+    *** Companion;
+    @kotlinx.serialization.Serializable *** *;
+}
+
+# 5. Preserve Koin Dependency Injection Reflection
+-keepclassmembers class * {
+    @org.koin.core.annotation.* *;
+}
+
+# 6. Preserve Android Entry Points (Activities, Services, Receivers)
+-keep public class * extends android.app.Activity
+-keep public class * extends android.app.Application
+-keep public class * extends android.app.Service
+-keep public class * extends android.content.BroadcastReceiver
+-keep public class * extends android.content.ContentProvider
+
+# 7. Strip Test Runner & Debug Tools
+-dontwarn androidx.test.**
+-dontwarn org.junit.**
+-dontwarn com.squareup.leakcanary.**`,
+  },
+  {
+    path: 'androidApp/src/main/AndroidManifest.xml',
+    module: 'Phase 4.1 — Hardened Production AndroidManifest',
+    language: 'json',
+    description: 'Production-ready AndroidManifest stripping debuggable flags, disallowing backup, enforcing network security config, and restricting component export',
+    code: `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.athena.app">
+
+    <!-- Production Required Permissions ONLY -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name="org.athena.android.AthenaApplication"
+        android:allowBackup="false"
+        android:debuggable="false"
+        android:fullBackupOnly="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Athena"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- Main Launcher Activity (Only exported component) -->
+        <activity
+            android:name="org.athena.android.ui.MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Internal Receiver (Exported set to false for security) -->
+        <receiver
+            android:name="org.athena.android.receiver.AlarmReceiver"
+            android:exported="false" />
+
+    </application>
+
+</manifest>`,
+  },
+  {
+    path: 'androidApp/src/main/res/xml/network_security_config.xml',
+    module: 'Phase 4.1 — Network Security Config',
+    language: 'json',
+    description: 'Network Security Policy forcing HTTPS-only endpoints and disabling user certificates',
+    code: `<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Only trust system certificates; user installed certificates are blocked -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Pinning for ATHENA API Domain -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">athena.org</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>`,
   },
 ];

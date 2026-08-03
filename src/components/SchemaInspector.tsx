@@ -21,19 +21,46 @@ export const SchemaInspector: React.FC = () => {
       indexes: ['idx_word_language ON WordEntity(language_code)'],
     },
     {
-      name: 'LearningItemEntity',
-      description: 'جدول لایتنر و کارت‌های یادگیری پیشرفته',
+      name: 'CardMemoryStateEntity',
+      description: 'جدول حافظه FSRS 4.5 با پارامترهای Stability، Difficulty و Retrievability',
+      columns: [
+        { name: 'card_id', type: 'TEXT', constraints: 'PRIMARY KEY REFERENCES WordEntity(id)' },
+        { name: 'stability', type: 'REAL', constraints: 'NOT NULL (S: Days stable before forgetting)' },
+        { name: 'difficulty', type: 'REAL', constraints: 'NOT NULL (D: Scale 1.0 to 10.0)' },
+        { name: 'retrievability', type: 'REAL', constraints: 'NOT NULL (R: 0.0 to 1.0 probability)' },
+        { name: 'review_count', type: 'INTEGER', constraints: 'DEFAULT 0' },
+        { name: 'lapse_count', type: 'INTEGER', constraints: 'DEFAULT 0' },
+        { name: 'success_count', type: 'INTEGER', constraints: 'DEFAULT 0' },
+        { name: 'failure_count', type: 'INTEGER', constraints: 'DEFAULT 0' },
+        { name: 'average_response_time', type: 'INTEGER', constraints: 'DEFAULT 1200 ms' },
+        { name: 'last_rating', type: 'TEXT', constraints: 'AGAIN | HARD | GOOD | EASY' },
+        { name: 'last_review_at', type: 'TEXT', constraints: 'NOT NULL' },
+        { name: 'next_review_at', type: 'TEXT', constraints: 'NOT NULL' },
+        { name: 'created_at', type: 'TEXT', constraints: 'NOT NULL' },
+        { name: 'updated_at', type: 'TEXT', constraints: 'NOT NULL' },
+      ],
+      indexes: [
+        'idx_fsrs_next_review ON CardMemoryStateEntity(next_review_at)',
+        'idx_fsrs_retrievability ON CardMemoryStateEntity(retrievability)',
+      ],
+    },
+    {
+      name: 'ReviewLogEntity',
+      description: 'جدول ثبت لیتیک و تاریخچه مرور کاربر برای الگوریتم FSRS 4.5 و هوش مصنوعی',
       columns: [
         { name: 'id', type: 'TEXT', constraints: 'PRIMARY KEY NOT NULL' },
-        { name: 'word_id', type: 'TEXT', constraints: 'FOREIGN KEY REFERENCES WordEntity(id)' },
-        { name: 'user_id', type: 'TEXT', constraints: 'NOT NULL' },
-        { name: 'box_level', type: 'INTEGER', constraints: 'DEFAULT 1 (1 to 5)' },
-        { name: 'last_reviewed_at', type: 'TEXT', constraints: 'NOT NULL' },
-        { name: 'next_review_at', type: 'TEXT', constraints: 'NOT NULL' },
-        { name: 'review_count', type: 'INTEGER', constraints: 'DEFAULT 0' },
-        { name: 'ease_factor', type: 'REAL', constraints: 'DEFAULT 2.5' },
+        { name: 'card_id', type: 'TEXT', constraints: 'FOREIGN KEY REFERENCES WordEntity(id)' },
+        { name: 'timestamp', type: 'TEXT', constraints: 'NOT NULL' },
+        { name: 'rating', type: 'TEXT', constraints: 'NOT NULL (AGAIN | HARD | GOOD | EASY)' },
+        { name: 'response_time_ms', type: 'INTEGER', constraints: 'NOT NULL' },
+        { name: 'previous_stability', type: 'REAL', constraints: 'NOT NULL' },
+        { name: 'new_stability', type: 'REAL', constraints: 'NOT NULL' },
+        { name: 'previous_difficulty', type: 'REAL', constraints: 'NOT NULL' },
+        { name: 'new_difficulty', type: 'REAL', constraints: 'NOT NULL' },
+        { name: 'previous_retrievability', type: 'REAL', constraints: 'NOT NULL' },
+        { name: 'new_retrievability', type: 'REAL', constraints: 'NOT NULL' },
       ],
-      indexes: ['idx_learning_next_review ON LearningItemEntity(next_review_at)'],
+      indexes: ['idx_review_log_card ON ReviewLogEntity(card_id)'],
     },
     {
       name: 'UserSettingEntity',
@@ -73,6 +100,44 @@ export const SchemaInspector: React.FC = () => {
       file: '5.sqm',
       title: 'Knowledge Graph & Context Indexing (v5)',
       sql: `CREATE INDEX idx_word_context ON WordEntity(word, language_code);`,
+    },
+    {
+      file: '6.sqm',
+      title: 'FSRS 4.5 Memory Engine & Review Log Migration (v6)',
+      sql: `DROP TABLE IF EXISTS LearningItemEntity;
+CREATE TABLE CardMemoryStateEntity (
+  card_id TEXT PRIMARY KEY REFERENCES WordEntity(id),
+  stability REAL NOT NULL,
+  difficulty REAL NOT NULL,
+  retrievability REAL NOT NULL,
+  review_count INTEGER NOT NULL DEFAULT 0,
+  lapse_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  average_response_time INTEGER NOT NULL DEFAULT 1200,
+  last_rating TEXT,
+  last_review_at TEXT NOT NULL,
+  next_review_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE ReviewLogEntity (
+  id TEXT PRIMARY KEY NOT NULL,
+  card_id TEXT NOT NULL REFERENCES WordEntity(id),
+  timestamp TEXT NOT NULL,
+  rating TEXT NOT NULL,
+  response_time_ms INTEGER NOT NULL,
+  previous_stability REAL NOT NULL,
+  new_stability REAL NOT NULL,
+  previous_difficulty REAL NOT NULL,
+  new_difficulty REAL NOT NULL,
+  previous_retrievability REAL NOT NULL,
+  new_retrievability REAL NOT NULL
+);
+
+CREATE INDEX idx_fsrs_next_review ON CardMemoryStateEntity(next_review_at);
+CREATE INDEX idx_review_log_card ON ReviewLogEntity(card_id);`,
     },
   ];
 

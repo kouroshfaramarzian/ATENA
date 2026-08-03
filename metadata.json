@@ -1,6 +1,6 @@
 {
-  "name": "ATHENA Core Foundation Studio",
-  "description": "Interactive architecture workspace, 10-module foundation simulator, Kotlin Multiplatform clean architecture code browser, and test runner for ATHENA language learning platform.",
+  "name": "ATHENA Language Learning Platform",
+  "description": "Production-ready enterprise language learning platform featuring Leitner spaced repetition engine, intelligent NLP reader, offline voice synthesis, and Android release package hardening.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

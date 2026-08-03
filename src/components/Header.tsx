@@ -44,16 +44,14 @@ export const Header: React.FC<HeaderProps> = ({
   dbVersion,
 }) => {
   const tabs: { id: TabType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'android_mvp', label: 'ATHENA Smart Dictionary v1.0', icon: Smartphone },
     { id: 'overview', label: 'Architecture Overview', icon: Layers },
-    { id: 'phase2_reader', label: 'Phase 2 Intelligent Reader', icon: BookOpen },
-    { id: 'android_mvp', label: 'Phase 1 Android MVP', icon: Smartphone },
+    { id: 'phase2_reader', label: 'Intelligent Reader', icon: BookOpen },
     { id: 'simulator', label: 'Core Live Simulator', icon: Play },
-    { id: 'readiness', label: 'Phase 0.2 Platform Readiness', icon: Cpu },
-    { id: 'graph', label: 'Dependency Graph', icon: GitFork },
+    { id: 'readiness', label: 'Platform Readiness', icon: Cpu },
     { id: 'code', label: 'KMP Codebase', icon: Code2 },
     { id: 'schema', label: 'SQLDelight Schema', icon: Database },
     { id: 'tests', label: 'Unit Test Runner', icon: CheckCircle2 },
-    { id: 'deliverables', label: 'Phase 0 & 0.2 Handoff Spec', icon: FileText },
   ];
 
   const getStatusBadge = () => {

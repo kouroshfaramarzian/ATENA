@@ -17,6 +17,64 @@ export interface LogEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface DictionaryDisplaySettings {
+  showPersianTranslation: boolean;
+  showEnglishDefinition: boolean;
+  showPronunciationIpa: boolean;
+  showPhonetics: boolean;
+  showPartOfSpeech: boolean;
+  showExampleSentences: boolean;
+  showSynonyms: boolean;
+  showAntonyms: boolean;
+  showWordFamily: boolean;
+  showVerbForms: boolean;
+  showCollocations: boolean;
+  showIdioms: boolean;
+  showPhrasalVerbs: boolean;
+  showCefrLevel: boolean;
+  showFrequencyLevel: boolean;
+  showEtymology: boolean;
+}
+
+export type TapBehaviorAction = 'POPUP' | 'FULL_PAGE' | 'SPEAK' | 'COPY' | 'BOOKMARK';
+
+export interface AthenaUserSettings {
+  general: {
+    appLanguage: 'en' | 'fa';
+    theme: 'light' | 'dark' | 'system';
+    fontSize: 'small' | 'medium' | 'large';
+    accentColor: string;
+  };
+  dictionary: DictionaryDisplaySettings;
+  tapBehavior: {
+    defaultAction: TapBehaviorAction;
+  };
+  pronunciation: {
+    autoPlay: boolean;
+    accent: 'US' | 'UK';
+    speechSpeed: number;
+  };
+  learning: {
+    dailyGoalMinutes: number;
+    dailyReminderEnabled: boolean;
+    reviewNotifications: boolean;
+    autoStartReview: boolean;
+    preferredReviewTime: string;
+    maxNewCardsPerDay?: number;
+    targetRetention?: number;
+  };
+  aiLearning: {
+    enableAiLearning: boolean;
+    adaptiveDifficulty: boolean;
+    smartReviewSuggestions: boolean;
+    personalizedLearning: boolean;
+  };
+  privacy: {
+    analyticsConsent: boolean;
+    dataRetentionDays: number;
+  };
+}
+
 export interface UserPreferences {
   targetLanguage: string;
   nativeLanguage: string;
@@ -131,7 +189,46 @@ export interface MeaningDetail {
   partOfSpeech: string; // noun, verb, adjective, etc.
   definitionEn: string;
   translation: string;
-  contextUsage: string;
+  contextUsage?: string;
+}
+
+/**
+ * SQLite / SQLDelight Production Offline Dictionary Entry Schema (Requirement 1)
+ */
+export interface DictionaryEntry {
+  id: string;
+  word: string;
+  lemma: string;
+  persian_translation: string;
+  english_definition: string;
+  ipa: string;
+  part_of_speech: string;
+  example_sentences: string[];
+  synonyms: string[];
+  antonyms: string[];
+  collocations: string[];
+  phrasal_verbs: string[] | null;
+  etymology: string | null;
+  cefr_level: string;
+  frequency_rank: number;
+  topic: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- ATHENA Lightweight Vocabulary Card Schema ---
+export interface VocabularyCard {
+  id: string;
+  word: string;
+  lemma: string;
+  persianMeaning: string;
+  englishDefinition: string;
+  exampleSentence: string;
+  cefrLevel?: string;
+  tags: string[];
+  notes?: string;
+  source?: string;
+  createdAt: string;
 }
 
 export interface PronunciationDetail {
@@ -158,28 +255,112 @@ export interface WordEntity {
   collocations?: string[];
   synonyms?: string[];
   antonyms?: string[];
+  wordFamily?: string[];
+  verbForms?: string[];
+  idioms?: string[];
+  phrasalVerbs?: string[];
   frequencyScore?: number;
 }
 
-export interface ReviewHistoryRecord {
-  timestamp: string;
-  boxLevelBefore: number;
-  boxLevelAfter: number;
-  performanceRating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY';
-  responseTimeMs: number;
+// --- FSRS 4.5 Memory Model Entities (Replacing SM-2) ---
+export type FsrsRating = 'AGAIN' | 'HARD' | 'GOOD' | 'EASY';
+
+export type VocabularyLearningState = 'New' | 'Learning' | 'Young Memory' | 'Mature' | 'Mastered' | 'Suspended';
+
+export interface LearningSessionRecord {
+  sessionId: string;
+  date: string;
+  durationSeconds: number;
+  wordsReviewed: string[];
+  correctAnswersCount: number;
+  forgottenWordsCount: number;
+  newWordsAddedCount: number;
+  aiPracticeActivity?: string;
+  userMistakes: { word: string; userRating: FsrsRating }[];
 }
+
+export interface CardMemoryState {
+  id: string;
+  cardId: string; // wordId
+  stability: number; // Double (S): Days memory stays stable before forgetting
+  difficulty: number; // Double (D): Scale 1.0 (easiest) to 10.0 (hardest)
+  retrievability: number; // Double (R): 0.0 to 1.0 probability of recall
+  lastReviewTimestamp: string;
+  nextReviewTimestamp: string;
+  reviewCount: number;
+  lapseCount: number;
+  successCount: number;
+  failureCount: number;
+  averageRecallTimeMs: number;
+  lastRating: FsrsRating;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewLog {
+  id?: string;
+  cardId?: string;
+  timestamp: string;
+  rating?: FsrsRating;
+  performanceRating?: FsrsRating;
+  elapsedDays?: number;
+  scheduledDays?: number;
+  responseTimeMs?: number;
+  reviewTimeMs?: number;
+  previousStability?: number;
+  newStability?: number;
+  stabilityAfter?: number;
+  previousDifficulty?: number;
+  newDifficulty?: number;
+  difficultyAfter?: number;
+  previousRetrievability?: number;
+  newRetrievability?: number;
+  retrievabilityAfter?: number;
+}
+
+export interface FsrsOptimizationResult {
+  originalW: number[];
+  optimizedW: number[];
+  initialLoss: number;
+  optimizedLoss: number;
+  iterations: number;
+  sampleCount: number;
+  optimizedAt: string;
+  converged: boolean;
+}
+
+export interface AdaptiveAiDifficultyAdjustment {
+  cardId: string;
+  wordText: string;
+  baseDifficulty: number;
+  aiDifficultyDelta: number; // Modifies base difficulty non-intrusively without touching core FSRS algorithm logic
+  finalDifficulty: number; // Math.min(10.0, Math.max(1.0, baseDifficulty + aiDifficultyDelta))
+  phoneticTriggers: string[];
+  latencyPenalty: number;
+  lapsePenalty: number;
+  aiReasoning: string;
+}
+
+export interface FsrsLearningAnalytics {
+  overallRetentionRate: number; // e.g. 0.92 (92%)
+  totalReviews: number;
+  totalLapses: number;
+  averageStabilityDays: number;
+  averageDifficulty: number;
+  retentionCurvePoints: { elapsedDays: number; retrievability: number }[];
+  difficultyDistribution: { bucket: string; count: number }[];
+  stabilityDistribution: { category: string; count: number }[];
+  hardestVocabulary: { wordText: string; difficulty: number; lapseCount: number; retrievability: number }[];
+  aiAdaptiveAdjustmentsCount: number;
+}
+
 
 export interface UserLearningStateEntity {
   wordId: string;
   userId: string;
-  boxLevel: number; // Leitner box 1-5
-  lastReviewedAt: string;
-  nextReviewAt: string;
-  reviewCount: number;
-  lapseCount: number;
-  easeFactor: number;
-  retrievabilityScore: number; // 0.0 to 1.0
-  history: ReviewHistoryRecord[];
+  cardMemoryState: CardMemoryState;
+  history: ReviewLog[];
+  boxLevel?: number; // Visual box mapping (1..5) derived from FSRS Stability (S)
 }
 
 export interface SettingEntity {
